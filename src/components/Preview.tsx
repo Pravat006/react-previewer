@@ -1,0 +1,85 @@
+import { useEffect, useRef, type FC } from "react"
+import * as Babel from "@babel/standalone"
+interface Props {
+    code: string
+}
+
+const Preview: FC<Props> = ({ code }) => {
+    const iframeRef = useRef<HTMLIFrameElement>(null)
+
+    useEffect(() => {
+        // Remove import/export statements
+        const cleanedCode = code.replace(/import[^;]+;?/g, '').replace(/export[^;]+;?/g, '');
+        const hasImports = /import\s/.test(code);
+        let warning = '';
+        if (hasImports) {
+            warning = '<div style="color:orange;padding:8px;">Imports are not supported in preview. Use React and ReactDOM from global scope.</div>';
+        }
+        try {
+            // Wrap user code and auto-render App
+            const wrappedCode = `${cleanedCode}\nReactDOM.createRoot(document.getElementById('root')).render(<App />);`;
+            const transformedCode = Babel.transform(wrappedCode, {
+                filename: 'input.tsx',
+                presets: ['react', 'typescript'],
+            }).code;
+
+            const html = `
+            <html>
+                <head>
+                    <style>
+                        body { font-family: sans-serif; margin: 0; padding: 16px; }
+                        button { padding: 8px 16px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                        button:hover { background: #0369a1; }
+                    </style>
+                    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                </head>
+                <body>
+                    ${warning}
+                    <div id="root"></div>
+                    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+                    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+                    <script>
+                        window.addEventListener('error', (event) => {
+                            const root = document.getElementById('root');
+                            root.innerHTML = '<pre style="color: red;">' + event.error.stack + '</pre>';
+                            console.error(event.error);
+                        });
+                        try {
+                            ${transformedCode}
+                        } catch (err) {
+                            document.getElementById('root').innerHTML = '<pre style="color:red;">' + err.stack + '</pre>';
+                            console.error(err);
+                        }
+                    </script>
+                    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                </body>
+            </html>
+            `;
+            if (iframeRef.current) {
+                iframeRef.current.srcdoc = html;
+            }
+        } catch (err) {
+            const errorHtml = `
+            <html>
+                <body>
+                    <pre style="color:red;">${err}</pre>
+                </body>
+            </html>
+            `;
+            if (iframeRef.current) {
+                iframeRef.current.srcdoc = errorHtml;
+            }
+        }
+    }, [code])
+
+    return (
+        <iframe
+            ref={iframeRef}
+            sandbox="allow-scripts"
+            title="preview"
+            className="w-full h-full border  bg-white"
+        />
+    )
+}
+
+export default Preview
